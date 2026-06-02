@@ -1,0 +1,55 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # 手動実行ボタンも有効化
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Build EXE with PyInstaller
+        run: uv run pyinstaller PhotoOrganizer.spec --clean
+
+      - name: Verify EXE was created
+        run: |
+          if (Test-Path "dist\PhotoOrganizer.exe") {
+            Write-Host "✅ PhotoOrganizer.exe created successfully"
+            $size = (Get-Item "dist\PhotoOrganizer.exe").Length / 1MB
+            Write-Host "   Size: $([math]::Round($size, 1)) MB"
+          } else {
+            Write-Host "❌ EXE not found"
+            exit 1
+          }
+
+      - name: Upload EXE as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoOrganizer-Windows
+          path: dist/PhotoOrganizer.exe
+          retention-days: 30
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            build/
+            *.log
