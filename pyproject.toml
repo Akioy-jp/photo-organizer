@@ -1,0 +1,12 @@
+[project]
+name = "photo-organizer"
+version = "1.0.0"
+description = "症例写真自動整理システム"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "opencv-python-headless>=4.8.0",
+    "pillow>=10.0.0",
+    "watchdog>=4.0.0",
+    "pyinstaller>=6.0.0",
+]
