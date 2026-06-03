@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>患者QRコード生成</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 15px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: clamp(20px, 5vw, 28px);
+            font-weight: 600;
+        }
+
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 25px;
+            font-size: clamp(12px, 3vw, 14px);
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            text-align: left;
+            margin-bottom: 8px;
+            color: #34495e;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #dce0e0;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: #3498db;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #2980b9;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background: #21638f;
+        }
+
+        button:active {
+            background: #1a4d6f;
+        }
+
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        #qr-result {
+            margin-top: 25px;
+            padding-top: 25px;
+            border-top: 1px solid #ecf0f1;
+            display: none;
+        }
+
+        #qr-result.show {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        #qrcode {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            padding: 20px;
+            background: #fafafa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        #qrcode canvas,
+        #qrcode img {
+            max-width: 100%;
+            height: auto !important;
+            width: auto !important;
+        }
+
+        .patient-info {
+            background: #ecf7fc;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            border: 1px solid #d1e7f5;
+        }
+
+        .patient-info p {
+            color: #5d6d7e;
+            font-size: 13px;
+            margin-bottom: 5px;
+        }
+
+        .patient-info strong {
+            color: #2c3e50;
+            font-size: 20px;
+        }
+
+        .instructions {
+            background: #fef9e7;
+            border: 1px solid #f9e79f;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: left;
+            font-size: 13px;
+            color: #7d6608;
+        }
+
+        .instructions h3 {
+            margin-bottom: 10px;
+            color: #7d6608;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .instructions ol {
+            margin-left: 18px;
+        }
+
+        .instructions li {
+            margin: 6px 0;
+            line-height: 1.4;
+        }
+
+        .fullscreen-btn {
+            margin-top: 15px;
+            background: #8e44ad;
+        }
+
+        .fullscreen-btn:hover {
+            background: #7d3c98;
+        }
+
+        .new-qr-btn {
+            margin-top: 10px;
+            background: #95a5a6;
+        }
+
+        .new-qr-btn:hover {
+            background: #7f8c8d;
+        }
+
+        #fullscreen-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: white;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        #fullscreen-overlay.show {
+            display: flex;
+        }
+
+        #fullscreen-qr-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex: 1;
+            padding: 40px;
+        }
+
+        #fullscreen-qr-container img {
+            max-width: 80vmin;
+            max-height: 80vmin;
+            width: auto !important;
+            height: auto !important;
+            image-rendering: pixelated;
+        }
+
+        .exit-fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #e74c3c;
+            padding: 10px 20px;
+            font-size: 16px;
+            width: auto;
+            border-radius: 6px;
+        }
+
+        .exit-fullscreen-btn:hover {
+            background: #c0392b;
+        }
+
+        #fullscreen-patient-label {
+            position: absolute;
+            bottom: 30px;
+            color: #7f8c8d;
+            font-size: 18px;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 22px;
+            }
+
+            input[type="text"],
+            button {
+                font-size: 14px;
+            }
+
+            #qrcode {
+                padding: 15px;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .container {
+                padding: 15px;
+            }
+
+            #qrcode canvas,
+            #qrcode img {
+                max-width: 200px !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>患者QRコード生成</h1>
+        <p class="subtitle">写真整理用QRコードを生成します</p>
+
+        <div id="input-section">
+            <div class="input-group">
+                <label for="patientId">患者番号 *</label>
+                <input type="text" id="patientId" placeholder="患者番号を入力（例：123456）" autofocus>
+            </div>
+
+            <button id="generateBtn" onclick="generateQR()">
+                QRコード生成
+            </button>
+
+            <div class="instructions">
+                <h3>使い方：</h3>
+                <ol>
+                    <li>先に患者の症例写真をすべて撮影する</li>
+                    <li>患者番号を入力してQRコードを生成する</li>
+                    <li>「全画面表示」で大きく表示する</li>
+                    <li>カメラでこの画面のQRコードを撮影する（最後の1枚）</li>
+                    <li>写真が自動的に整理されます</li>
+                </ol>
+            </div>
+        </div>
+
+        <div id="qr-result">
+            <div id="qrcode"></div>
+
+            <div class="patient-info">
+                <p>患者番号：</p>
+                <strong id="displayPatientId"></strong>
+            </div>
+
+            <button class="fullscreen-btn" onclick="toggleFullscreen()">
+                全画面表示
+            </button>
+
+            <button class="new-qr-btn" onclick="resetForm()">
+                新しいQRを生成
+            </button>
+        </div>
+    </div>
+
+    <div id="fullscreen-overlay">
+        <button class="exit-fullscreen-btn" onclick="exitFullscreen()">閉じる</button>
+        <div id="fullscreen-qr-container"></div>
+        <div id="fullscreen-patient-label"></div>
+    </div>
+
+    <script src="qrcode.min.js"></script>
+    <script>
+        let qrCodeInstance = null;
+
+        document.getElementById('patientId').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                generateQR();
+            }
+        });
+
+        function generateQR() {
+            const patientId = document.getElementById('patientId').value.trim();
+
+            if (!patientId) {
+                alert('患者番号を入力してください');
+                return;
+            }
+
+            const qrcodeDiv = document.getElementById('qrcode');
+            qrcodeDiv.innerHTML = '';
+
+            // Generate QR code with format: PATIENT_ID:123456
+            const qrData = `PATIENT_ID:${patientId}`;
+
+            qrCodeInstance = new QRCode(qrcodeDiv, {
+                text: qrData,
+                width: 300,
+                height: 300,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            document.getElementById('displayPatientId').textContent = patientId;
+
+            document.getElementById('qr-result').classList.add('show');
+
+            document.getElementById('input-section').style.display = 'none';
+        }
+
+        function toggleFullscreen() {
+            const overlay = document.getElementById('fullscreen-overlay');
+            const container = document.getElementById('fullscreen-qr-container');
+            const originalCanvas = document.querySelector('#qrcode canvas');
+            const patientId = document.getElementById('displayPatientId').textContent;
+
+            if (originalCanvas) {
+                container.innerHTML = '';
+                const img = document.createElement('img');
+                img.src = originalCanvas.toDataURL('image/png');
+                img.style.width = '80vmin';
+                img.style.height = '80vmin';
+                img.style.imageRendering = 'pixelated';
+                container.appendChild(img);
+            }
+
+            document.getElementById('fullscreen-patient-label').textContent = '患者番号: ' + patientId;
+            overlay.classList.add('show');
+
+            if (overlay.requestFullscreen) {
+                overlay.requestFullscreen();
+            }
+        }
+
+        function exitFullscreen() {
+            document.getElementById('fullscreen-overlay').classList.remove('show');
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => { });
+            }
+        }
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                exitFullscreen();
+            }
+        });
+
+        function resetForm() {
+            document.getElementById('patientId').value = '';
+            document.getElementById('qr-result').classList.remove('show');
+            document.getElementById('input-section').style.display = 'block';
+            document.getElementById('patientId').focus();
+        }
+    </script>
+</body>
+
+</html>
