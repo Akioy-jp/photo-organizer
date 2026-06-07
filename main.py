@@ -228,9 +228,12 @@ class PhotoProcessor:
         return datetime.fromtimestamp(image_path.stat().st_mtime)
 
     def detect_qr_code(self, image_path: Path) -> Optional[str]:
-        """WeChatQRCode（高精度）+ QRCodeDetector（フォールバック）"""
+        """デジカメ高解像度写真対応QR検出。
+        cv2.imreadは日本語パス非対応のためnumpy経由で読み込む。
+        OpenCVのQRCodeDetectorは高解像度すぎると失敗するため、
+        長辺を600px・400pxに縮小してから検出する。
+        """
         try:
-            # cv2.imreadは日本語パスを読めないため、numpy経由で読み込む
             import numpy as np
             with open(image_path, 'rb') as f:
                 data = np.frombuffer(f.read(), dtype=np.uint8)
@@ -239,32 +242,28 @@ class PhotoProcessor:
                 self.logger.warning(f"Could not read image: {image_path.name}")
                 return None
 
-            # 第1試行: WeChatQRCode（遠距離・斜め撮影に強い）
-            try:
-                wechat = cv2.wechat_qrcode_WeChatQRCode()
-                results, _ = wechat.detectAndDecode(image)
-                if results:
-                    self.logger.info(f"QR detected (WeChatQRCode) in {image_path.name}: {results[0]}")
-                    return self.parse_patient_id(results[0])
-            except Exception:
-                pass
-
-            # 第2試行: グレースケール
             detector = cv2.QRCodeDetector()
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            h, w = gray.shape
+
+            # デジカメ写真は高解像度すぎてQR検出が失敗するため
+            # 長辺を600px→400pxに縮小して試す
+            for target_size in [600, 400]:
+                scale = target_size / max(h, w)
+                resized = cv2.resize(gray, None, fx=scale, fy=scale,
+                                     interpolation=cv2.INTER_AREA)
+                qr_data, _, _ = detector.detectAndDecode(resized)
+                if qr_data:
+                    self.logger.info(
+                        f"QR detected (size={target_size}) in {image_path.name}: {qr_data}"
+                    )
+                    return self.parse_patient_id(qr_data)
+
+            # フォールバック: 元サイズのグレースケール
             qr_data, _, _ = detector.detectAndDecode(gray)
             if qr_data:
-                self.logger.info(f"QR detected (gray) in {image_path.name}: {qr_data}")
+                self.logger.info(f"QR detected (original) in {image_path.name}: {qr_data}")
                 return self.parse_patient_id(qr_data)
-
-            # 第3試行: 拡大
-            height, width = image.shape[:2]
-            if max(height, width) < 2000:
-                enlarged = cv2.resize(image, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-                qr_data, _, _ = detector.detectAndDecode(enlarged)
-                if qr_data:
-                    self.logger.info(f"QR detected (enlarged) in {image_path.name}: {qr_data}")
-                    return self.parse_patient_id(qr_data)
 
             return None
 
