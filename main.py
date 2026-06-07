@@ -86,7 +86,6 @@ def _setup_config(config_path: Path) -> dict:
         except Exception:
             pass
 
-    # watch_folderが未設定または存在しないフォルダの場合はダイアログを表示
     watch_folder = config.get("watch_folder", "")
     needs_setup = (
         not watch_folder or
@@ -94,10 +93,10 @@ def _setup_config(config_path: Path) -> dict:
     )
 
     if needs_setup:
+        # 初回：フォルダ選択ダイアログを表示
         print("\n" + "="*60)
         print("初期設定：監視フォルダを選択してください")
         print("="*60)
-
         selected = _select_watch_folder()
 
         if not selected:
@@ -106,13 +105,35 @@ def _setup_config(config_path: Path) -> dict:
             sys.exit(0)
 
         config["watch_folder"] = selected
-
-        # config.jsonに保存
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=4)
+        print(f"\n✅ 設定を保存しました: {selected}\n")
 
-        print(f"\n✅ 設定を保存しました")
-        print(f"   監視フォルダ: {selected}")
+    else:
+        # 2回目以降：現在の設定を表示して変更するか確認
+        print("\n" + "="*60)
+        print(f"監視フォルダ : {watch_folder}")
+        print("="*60)
+        print("そのまま起動する場合は Enter を押してください。")
+        print("フォルダを変更する場合は「y」を入力してください。")
+        print("-"*60)
+
+        try:
+            answer = input("変更しますか？ [y/Enter]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+
+        if answer == "y":
+            selected = _select_watch_folder()
+            if selected:
+                config["watch_folder"] = selected
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, ensure_ascii=False, indent=4)
+                print(f"\n✅ 監視フォルダを変更しました")
+                print(f"   変更前: {watch_folder}")
+                print(f"   変更後: {selected}\n")
+            else:
+                print("\nキャンセルしました。元のフォルダで起動します。\n")
 
     return config
 
@@ -209,7 +230,11 @@ class PhotoProcessor:
     def detect_qr_code(self, image_path: Path) -> Optional[str]:
         """WeChatQRCode（高精度）+ QRCodeDetector（フォールバック）"""
         try:
-            image = cv2.imread(str(image_path))
+            # cv2.imreadは日本語パスを読めないため、numpy経由で読み込む
+            import numpy as np
+            with open(image_path, 'rb') as f:
+                data = np.frombuffer(f.read(), dtype=np.uint8)
+            image = cv2.imdecode(data, cv2.IMREAD_COLOR)
             if image is None:
                 self.logger.warning(f"Could not read image: {image_path.name}")
                 return None
