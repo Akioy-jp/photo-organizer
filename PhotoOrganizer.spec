@@ -6,14 +6,11 @@ a = Analysis(
     binaries=[],
     datas=[],
     hiddenimports=[
-        # cv2 / opencv
         'cv2',
         'numpy',
-        # watchdog Windows backend
         'watchdog.observers.winapi',
         'watchdog.observers.read_directory_changes',
         'watchdog.events',
-        # PIL
         'PIL',
         'PIL.Image',
         'PIL.ExifTags',
@@ -21,12 +18,15 @@ a = Analysis(
         'PIL.PngImagePlugin',
         'PIL.BmpImagePlugin',
         'PIL.GifImagePlugin',
+        # tkinter（フォルダ選択ダイアログ用）
+        'tkinter',
+        'tkinter.filedialog',
+        'tkinter.messagebox',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        'tkinter',
         'matplotlib',
         'scipy',
         'IPython',
