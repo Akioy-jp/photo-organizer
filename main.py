@@ -471,11 +471,16 @@ class PhotoProcessor:
         self.logger.info(f"処理開始: patient={patient_id}, session={session_id}")
 
         try:
-            # QRより前のファイルを取得（ファイル名順でQRより前）
+            # 前回QR以降のファイルを取得（ファイル名順）
             candidates = self._get_files_since_last_qr()
 
-            # QR自身を除いたファイルが対象写真
-            photos = [f for f in candidates if f.resolve() != qr_image_path.resolve()]
+            # QR自身と、QRより後のファイルを除外する
+            # ファイル名順でQRより前のファイルのみが対象写真
+            photos = []
+            for f in candidates:
+                if f.resolve() == qr_image_path.resolve():
+                    break  # QRに到達したら終了
+                photos.append(f)
 
             self.logger.info(f"対象写真: {len(photos)}枚")
             for p in photos:
@@ -573,25 +578,30 @@ class PhotoEventHandler(FileSystemEventHandler):
         self._pending_qr: Optional[Path] = None
 
     def on_created(self, event):
-        if event.is_directory:
-            return
-        file_path = Path(event.src_path)
-        if not self.processor._is_root_image(file_path):
-            return
-        if self.processor._should_skip(file_path):
-            return
+        try:
+            if event.is_directory:
+                return
+            file_path = Path(event.src_path)
+            if not self.processor._is_root_image(file_path):
+                return
+            if self.processor._should_skip(file_path):
+                return
 
-        self.processor.logger.info(f"新しいファイル検知: {file_path.name}")
+            self.processor.logger.info(f"新しいファイル検知: {file_path.name}")
 
-        # QRかどうか確認（少し待ってからファイルが書き込み完了してから読む）
-        time.sleep(3)
-        if not file_path.exists():
-            return
+            # QRかどうか確認（書き込み完了を待ってから読む）
+            time.sleep(3)
+            if not file_path.exists():
+                return
 
-        patient_id = self.processor.detect_qr_code(file_path)
-        if patient_id:
-            self.processor.logger.info(f"QRトリガー: {file_path.name} → patient={patient_id}")
-            self.processor._process_qr_trigger(file_path, patient_id)
+            patient_id = self.processor.detect_qr_code(file_path)
+            if patient_id:
+                self.processor.logger.info(f"QRトリガー: {file_path.name} → patient={patient_id}")
+                self.processor._process_qr_trigger(file_path, patient_id)
+
+        except Exception as e:
+            self.processor.logger.error(f"ファイル処理中にエラーが発生しました: {e}")
+            # エラーが発生してもプログラムは継続する
 
 
 def main():
