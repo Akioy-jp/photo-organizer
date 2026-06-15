@@ -448,22 +448,26 @@ class PhotoProcessor:
             moved_count += 1
 
         # QRファイルも移動（元のファイル名を保持）
-        qr_dest = dest_folder / qr_photo.name
-        if qr_dest.exists():
-            counter = 1
-            while qr_dest.exists():
-                qr_dest = dest_folder / f"{qr_photo.stem}_{counter}{qr_photo.suffix}"
-                counter += 1
-        shutil.move(str(qr_photo), str(qr_dest))
-        moved_count += 1
+        if qr_photo.exists():
+            qr_dest = dest_folder / qr_photo.name
+            if qr_dest.exists():
+                counter = 1
+                while qr_dest.exists():
+                    qr_dest = dest_folder / f"{qr_photo.stem}_{counter}{qr_photo.suffix}"
+                    counter += 1
+            shutil.move(str(qr_photo), str(qr_dest))
+            moved_count += 1
+        else:
+            self.logger.warning(f"QRファイルが見つかりません（スキップ）: {qr_photo.name}")
 
         return moved_count
 
     def _process_qr_trigger(self, qr_image_path: Path, patient_id: str):
         """QRトリガー処理。
         1. 同期完了まで待機
-        2. 前回QR以降のファイルを対象として取得
-        3. バックアップ→移動→ログ
+        2. 監視フォルダのルート直下ファイルをファイル名順で取得
+        3. QRより前のファイルを対象写真とする（QR自身は含まない）
+        4. バックアップ→移動→ログ
         """
         self._wait_for_sync_complete(qr_image_path)
 
@@ -471,32 +475,76 @@ class PhotoProcessor:
         self.logger.info(f"処理開始: patient={patient_id}, session={session_id}")
 
         try:
-            # 前回QR以降のファイルを取得（ファイル名順）
-            candidates = self._get_files_since_last_qr()
+            # 監視フォルダのルート直下のファイルをファイル名順で取得
+            all_root_files = sorted(
+                [f for f in self.watch_folder.iterdir()
+                 if f.is_file()
+                 and not self._should_skip(f)
+                 and self.is_image_file(f)],
+                key=lambda f: f.name
+            )
 
-            # QR自身と、QRより後のファイルを除外する
-            # ファイル名順でQRより前のファイルのみが対象写真
+            # QRより前のファイルのみを対象写真とする（QR自身は含まない）
             photos = []
-            for f in candidates:
+            qr_found = False
+            for f in all_root_files:
                 if f.resolve() == qr_image_path.resolve():
-                    break  # QRに到達したら終了
+                    qr_found = True
+                    break
                 photos.append(f)
+
+            if not qr_found:
+                self.logger.warning(f"QRファイルがファイル一覧に見つかりません: {qr_image_path.name}")
 
             self.logger.info(f"対象写真: {len(photos)}枚")
             for p in photos:
                 self.logger.info(f"  → {p.name}")
 
+            # バックアップ（QRが存在する場合のみQRもバックアップ）
             self._create_backup(session_id, photos, qr_image_path, patient_id)
-            moved_count = self.organize_photos(patient_id, photos, qr_image_path)
+
+            # 写真を移動（QRは含まない）
+            qr_timestamp = self.get_image_timestamp(qr_image_path)
+            date_folder = qr_timestamp.strftime("%Y.%m.%d")
+            dest_folder = self.watch_folder / patient_id / date_folder
+            dest_folder.mkdir(parents=True, exist_ok=True)
+
+            moved_count = 0
+            for photo in photos:
+                if not photo.exists():
+                    self.logger.warning(f"移動対象が見つかりません（スキップ）: {photo.name}")
+                    continue
+                dest_path = dest_folder / photo.name
+                if dest_path.exists():
+                    counter = 1
+                    while dest_path.exists():
+                        dest_path = dest_folder / f"{photo.stem}_{counter}{photo.suffix}"
+                        counter += 1
+                shutil.move(str(photo), str(dest_path))
+                self.logger.info(f"移動: {photo.name} → {dest_path}")
+                moved_count += 1
+
+            # QRを移動（存在確認してから）
+            if qr_image_path.exists():
+                qr_dest = dest_folder / qr_image_path.name
+                if qr_dest.exists():
+                    counter = 1
+                    while qr_dest.exists():
+                        qr_dest = dest_folder / f"{qr_image_path.stem}_{counter}{qr_image_path.suffix}"
+                        counter += 1
+                shutil.move(str(qr_image_path), str(qr_dest))
+                self.logger.info(f"QR移動: {qr_image_path.name} → {qr_dest}")
+                moved_count += 1
+            else:
+                self.logger.warning(f"QRファイルが見つからないためスキップ: {qr_image_path.name}")
 
             # 前回QR名を更新
             self._last_processed_qr_name = qr_image_path.name
 
             self._write_done(session_id, patient_id, moved_count)
             self._update_patient_stats(patient_id, moved_count)
-            qr_timestamp = self.get_image_timestamp(qr_image_path)
             self._append_csv_log(session_id, patient_id, moved_count,
-                                  qr_timestamp.strftime("%Y.%m.%d"), "OK")
+                                  date_folder, "OK")
 
             self.logger.info(f"✅ 完了: patient={patient_id} {moved_count}枚移動")
             print(f"✅ 完了: 患者{patient_id} — {moved_count}枚を整理しました\n")
